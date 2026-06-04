@@ -1,0 +1,81 @@
+image: node:20-alpine
+
+definitions:
+  caches:
+    npm: ~/.npm
+
+  steps:
+    - step: &install
+        name: Install Dependencies
+        caches:
+          - npm
+        script:
+          - npm ci
+        artifacts:
+          - node_modules/**
+
+    - step: &typecheck
+        name: TypeScript Type Check
+        script:
+          - npx tsc --noEmit
+
+    - step: &lint
+        name: Lint & Format Check
+        script:
+          - npx eslint "src/**/*.{ts,tsx}" --max-warnings 0
+          - npx prettier --check "src/**/*.{ts,tsx,css}" "*.{json,md,yml}"
+
+    - step: &test
+        name: Unit Tests (Jest + Coverage)
+        script:
+          - npx jest --ci --coverage --coverageReporters=text --coverageReporters=lcov
+        artifacts:
+          - coverage/**
+
+    - step: &build
+        name: Build
+        script:
+          - npm run build
+        artifacts:
+          - dist/**
+
+pipelines:
+  # Runs on every pull request
+  pull-requests:
+    '**':
+      - step: *install
+      - parallel:
+          - step: *typecheck
+          - step: *lint
+          - step: *test
+      - step: *build
+
+  # Runs on merge to main (production branch)
+  branches:
+    main:
+      - step: *install
+      - parallel:
+          - step: *typecheck
+          - step: *lint
+          - step: *test
+      - step: *build
+      - step:
+          name: Deploy to Production
+          deployment: production
+          trigger: manual      # Require manual approval before deploying
+          script:
+            - echo "Add your deploy commands here (e.g. Vercel, AWS S3, etc.)"
+
+    # Staging / develop branch
+    develop:
+      - step: *install
+      - parallel:
+          - step: *typecheck
+          - step: *lint
+          - step: *test
+      - step: *build
+      - step:
+          name: Deploy to Staging
+          deployment: staging
+          script:
+            - echo "Add your staging deploy commands here"
